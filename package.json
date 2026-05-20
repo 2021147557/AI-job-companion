@@ -1,0 +1,17 @@
+{
+  "name": "ai-job-companion",
+  "version": "0.1.0",
+  "private": true,
+  "description": "쉬었음 청년을 위한 AI 취업 동행 서비스 (IP 팀 프로젝트, 2026)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-session": "^1.18.0"
+  }
+}

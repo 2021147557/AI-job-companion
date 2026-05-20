@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 취업 동행 - 쉬었음 청년을 위한 서비스</title>
+    <link rel="stylesheet" type="text/css" href="/css/main.css">
+</head>
+<body>
+    <div class="page">
+        <header class="header">
+            <div class="header-spacer"></div>
+            <h1 class="header-text">AI 취업 동행 서비스</h1>
+        </header>
+        <nav class="navigation"></nav>
+
+        <section class="section">
+            <h2 class="section-title">서비스 소개 <span class="pill">2026 IP 팀 프로젝트</span></h2>
+            <p style="line-height: 1.7;">
+                쉬었음 청년의 취업 준비 과정에서 발생하는 정보 탐색, 면접 준비, 면접 당일 실행의 막막함을 해결하는
+                <strong>LLM · 지도 API 기반 모바일 매시업 서비스</strong>입니다.
+            </p>
+            <div class="two-col">
+                <div>
+                    <h3 style="margin: 12px 0 4px;">서비스 흐름</h3>
+                    <ol style="line-height: 1.8; padding-left: 18px;">
+                        <li>포트폴리오 입력</li>
+                        <li>워크넷/고용24 + OpenAI 기반 채용 공고 추천</li>
+                        <li>선택한 공고로 맞춤 모의 면접</li>
+                        <li>면접 당일 체크리스트 + 면접장 주변 지도</li>
+                    </ol>
+                </div>
+                <div>
+                    <h3 style="margin: 12px 0 4px;">사용 기술</h3>
+                    <ul style="line-height: 1.8; padding-left: 18px;">
+                        <li>Web API (런타임 호출): 워크넷/고용24, Kakao Local, Kakao Maps, OpenAI</li>
+                        <li>그래프 라이브러리: <strong>d3.js</strong></li>
+                        <li>모바일 정보: Geolocation API (현재 위치)</li>
+                        <li>서버: Node.js + Express + SQLite</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="button-row">
+                <a class="btn btn-primary" href="/signup.html">회원가입하고 시작하기</a>
+                <a class="btn btn-secondary" href="/login.html">로그인</a>
+            </div>
+        </section>
+
+        <section class="section">
+            <h2 class="section-title">팀원</h2>
+            <p>
+                이승호(2020147516) · 김성민(2023240233) · 이재근(2021147557) · 이창현(2023149044) · 하장보(2015101013)
+            </p>
+        </section>
+    </div>
+    <script src="/js/common.js"></script>
+    <script>
+        (async () => {
+            const me = await API.get('/api/auth/me').catch(() => ({ loggedIn: false }));
+            renderNav('/', me.loggedIn ? me : null);
+            if (me.loggedIn) location.href = '/dashboard.html';
+        })();
+    </script>
+</body>
+</html>

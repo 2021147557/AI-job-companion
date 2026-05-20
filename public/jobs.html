@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>추천 공고 - AI 취업 동행</title>
+    <link rel="stylesheet" type="text/css" href="/css/main.css">
+</head>
+<body>
+    <div class="page">
+        <header class="header">
+            <div class="header-spacer"></div>
+            <h1 class="header-text">AI 취업 동행 서비스</h1>
+        </header>
+        <nav class="navigation"></nav>
+
+        <section class="section">
+            <h2 class="section-title">추천 공고 <span class="pill">시나리오 2단계</span></h2>
+            <p class="muted" id="pf-summary">포트폴리오를 기준으로 워크넷/고용24 공고와 적합도를 계산합니다.</p>
+            <div id="loading" class="muted">분석 중…</div>
+        </section>
+
+        <section class="section" id="viz-section" style="display:none;">
+            <h2 class="section-title">공고별 적합도 비교 <span class="pill">d3.js</span></h2>
+            <div id="viz-bar"></div>
+        </section>
+
+        <section class="section" id="list-section" style="display:none;">
+            <h2 class="section-title">추천 공고 목록</h2>
+            <div id="jobs-list" class="jobs-list"></div>
+        </section>
+
+        <section class="section" id="detail-section" style="display:none;">
+            <h2 class="section-title">선택 공고 상세 <span class="pill" id="detail-score"></span></h2>
+            <div id="detail-body"></div>
+            <div id="viz-graph"></div>
+            <div class="button-row">
+                <button id="select-btn" class="btn btn-primary">이 공고 선택하기</button>
+                <button id="close-btn" class="btn btn-secondary">닫기</button>
+            </div>
+        </section>
+    </div>
+
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="/js/common.js"></script>
+    <script src="/js/viz.js"></script>
+    <script>
+        let allJobs = [];
+        let portfolio = null;
+
+        function classifyScore(s) { return s >= 70 ? 'high' : s >= 50 ? 'mid' : ''; }
+
+        function renderList() {
+            const root = document.getElementById('jobs-list');
+            root.innerHTML = allJobs.map((j, i) => {
+                const score = Math.round(j.match.score || 0);
+                return `
+                <div class="job-card" data-i="${i}">
+                    <div class="job-header">
+                        <div>
+                            <div class="job-title">${escapeHtml(j.title)}</div>
+                            <div class="job-company">${escapeHtml(j.company)} · ${escapeHtml(j.region || '')} · ${escapeHtml(j.career || '')}</div>
+                        </div>
+                        <div class="score-badge ${classifyScore(score)}">${score}점</div>
+                    </div>
+                    <div class="skills-row">
+                        ${(j.skills || []).slice(0, 6).map(s => {
+                            const matched = (j.match.matchedSkills || []).map(x => x.toLowerCase()).includes(s.toLowerCase());
+                            return `<span class="skill-tag ${matched ? 'matched' : ''}">${escapeHtml(s)}</span>`;
+                        }).join('')}
+                    </div>
+                    <div class="match-reason">${escapeHtml(j.match.reason || '')}</div>
+                </div>`;
+            }).join('');
+            root.querySelectorAll('.job-card').forEach(card => {
+                card.addEventListener('click', () => openDetail(Number(card.dataset.i)));
+            });
+        }
+
+        function renderBar() {
+            const top = allJobs.slice(0, 8).map(j => ({ label: `${j.company} · ${j.title}`, value: j.match.score || 0 }));
+            VIZ.barchart('#viz-bar', top);
+            document.getElementById('viz-section').style.display = 'block';
+        }
+
+        function openDetail(i) {
+            const j = allJobs[i];
+            const sec = document.getElementById('detail-section');
+            sec.style.display = 'block';
+            const score = Math.round(j.match.score || 0);
+            document.getElementById('detail-score').textContent = `${score}점`;
+            const matched = j.match.matchedSkills || [];
+            const missing = j.match.missingSkills || [];
+            document.getElementById('detail-body').innerHTML = `
+                <h3 style="margin: 4px 0;">${escapeHtml(j.title)} <span class="muted" style="font-weight: 400;">@ ${escapeHtml(j.company)}</span></h3>
+                <p class="muted">${escapeHtml(j.region || '')} · ${escapeHtml(j.career || '')} · 마감 ${escapeHtml(j.deadline || '-')}</p>
+                <p>${escapeHtml(j.summary || '')}</p>
+                <div style="margin-top: 10px;"><strong>추천 이유</strong><br>${escapeHtml(j.match.reason || '')}</div>
+                <div style="margin-top: 10px;"><strong>핵심 요구사항</strong>
+                    <div class="skills-row">${(j.skills || []).map(s => `<span class="skill-tag">${escapeHtml(s)}</span>`).join('')}</div>
+                </div>
+                <div style="margin-top: 10px;"><strong>우대사항</strong>
+                    <div class="skills-row">${(j.preferred || []).map(s => `<span class="skill-tag">${escapeHtml(s)}</span>`).join('')}</div>
+                </div>
+                <div style="margin-top: 10px;"><strong>부족 역량</strong>
+                    <div class="skills-row">${missing.length ? missing.map(s => `<span class="skill-tag missing">${escapeHtml(s)}</span>`).join('') : '<span class="muted">없음</span>'}</div>
+                    <p class="muted">${escapeHtml(j.match.missingNote || '')}</p>
+                </div>
+                <h4 style="margin: 14px 0 4px;">공고-역량 매칭 그래프</h4>
+            `;
+            VIZ.skillGraph('#viz-graph', {
+                job: j,
+                matched,
+                missing,
+                userSkills: portfolio.skills || []
+            });
+            document.getElementById('select-btn').onclick = async () => {
+                try {
+                    const r = await API.post('/api/jobs/select', { job: j, match: j.match });
+                    toast('선택 완료!');
+                    setTimeout(() => location.href = `/interview.html?id=${r.selectedJobId}`, 600);
+                } catch (e) { alert(e.message); }
+            };
+            sec.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        document.addEventListener('click', (e) => {
+            if (e.target && e.target.id === 'close-btn') document.getElementById('detail-section').style.display = 'none';
+        });
+
+        (async () => {
+            const me = await requireLogin();
+            if (!me) return;
+            renderNav('/jobs.html', me);
+            try {
+                const data = await API.get('/api/jobs/recommend');
+                portfolio = data.portfolio;
+                allJobs = data.jobs;
+                document.getElementById('loading').style.display = 'none';
+                if (!portfolio.desiredRole && !(portfolio.skills && portfolio.skills.length)) {
+                    document.getElementById('pf-summary').innerHTML = '포트폴리오가 비어 있습니다. <a href="/portfolio.html">먼저 입력해주세요 →</a>';
+                    return;
+                }
+                document.getElementById('pf-summary').textContent =
+                    `희망 직무: ${portfolio.desiredRole || '-'} · 지역: ${portfolio.desiredRegion || '-'} · 기술: ${(portfolio.skills || []).join(', ') || '-'}`;
+                document.getElementById('list-section').style.display = 'block';
+                renderBar();
+                renderList();
+            } catch (e) {
+                document.getElementById('loading').textContent = '오류: ' + e.message;
+            }
+        })();
+    </script>
+</body>
+</html>

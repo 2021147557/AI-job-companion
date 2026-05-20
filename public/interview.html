@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>모의 면접 - AI 취업 동행</title>
+    <link rel="stylesheet" type="text/css" href="/css/main.css">
+</head>
+<body>
+    <div class="page">
+        <header class="header">
+            <div class="header-spacer"></div>
+            <h1 class="header-text">AI 취업 동행 서비스</h1>
+        </header>
+        <nav class="navigation"></nav>
+
+        <section class="section">
+            <h2 class="section-title">모의 면접 <span class="pill">시나리오 3단계</span></h2>
+            <div id="job-summary" class="muted">로딩 중…</div>
+            <div class="button-row">
+                <button id="regen-btn" class="btn btn-secondary btn-sm">질문 다시 생성</button>
+                <a id="to-checklist" class="btn btn-secondary btn-sm" href="#">면접 당일 준비 →</a>
+            </div>
+        </section>
+
+        <section class="section" id="picker-section" style="display:none;">
+            <h2 class="section-title">선택한 공고 선택</h2>
+            <div id="picker-list"></div>
+        </section>
+
+        <section class="section" id="qna-section" style="display:none;">
+            <h2 class="section-title">예상 질문 & 답변</h2>
+            <div id="qna-list" class="qna-list"></div>
+        </section>
+
+        <section class="section" id="summary-section" style="display:none;">
+            <h2 class="section-title">면접 준비 진행률 <span class="pill">d3.js</span></h2>
+            <div id="viz-progress"></div>
+        </section>
+    </div>
+
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="/js/common.js"></script>
+    <script src="/js/viz.js"></script>
+    <script>
+        let selectedJobId = new URLSearchParams(location.search).get('id');
+        let qnaItems = [];
+
+        function fbHtml(fb) {
+            if (!fb) return '';
+            const s = fb.scores || {};
+            const chips = [
+                ['구체성', s.concreteness], ['논리성', s.logic],
+                ['직무 적합성', s.relevance], ['기술 설명력', s.techExpression],
+                ['종합', s.overall]
+            ];
+            return `
+                <div class="feedback-box">
+                    <div class="feedback-scores">
+                        ${chips.map(([k, v]) => `<div class="score-chip">${k} <strong>${v ?? '-'} / 5</strong></div>`).join('')}
+                    </div>
+                    <div><strong>잘한 점</strong>: ${escapeHtml(fb.strengths || '')}</div>
+                    <div style="margin-top: 4px;"><strong>개선 포인트</strong>
+                        <ul style="margin: 4px 0 0; padding-left: 18px;">
+                            ${(fb.improvements || []).map(s => `<li>${escapeHtml(s)}</li>`).join('')}
+                        </ul>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderQna() {
+            const list = document.getElementById('qna-list');
+            list.innerHTML = qnaItems.map((q, i) => `
+                <div class="qna-card" data-id="${q.id}">
+                    <div class="qna-question">
+                        <span class="qna-type">${escapeHtml(q.type || '질문')}</span>
+                        <span>Q${i + 1}. ${escapeHtml(q.question)}</span>
+                    </div>
+                    <textarea class="field-textarea" placeholder="답변을 입력하세요 (구체적 사례와 수치 권장)" data-answer="${q.id}">${escapeHtml(q.answer || '')}</textarea>
+                    <div class="button-row" style="margin-top: 6px;">
+                        <button class="btn btn-primary btn-sm" data-submit="${q.id}">답변 제출 & 피드백</button>
+                    </div>
+                    <div data-feedback="${q.id}">${fbHtml(q.feedback)}</div>
+                </div>
+            `).join('');
+
+            list.querySelectorAll('[data-submit]').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const id = btn.dataset.submit;
+                    const ta = list.querySelector(`textarea[data-answer="${id}"]`);
+                    const answer = ta.value.trim();
+                    if (!answer) { toast('답변을 입력하세요'); return; }
+                    btn.disabled = true;
+                    btn.textContent = '평가 중…';
+                    try {
+                        const r = await API.post(`/api/interview/answer/${id}`, { answer });
+                        const item = qnaItems.find(x => String(x.id) === String(id));
+                        if (item) { item.answer = answer; item.feedback = r.feedback; }
+                        list.querySelector(`[data-feedback="${id}"]`).innerHTML = fbHtml(r.feedback);
+                        toast('피드백 도착!');
+                        updateProgress();
+                    } catch (e) { alert(e.message); }
+                    finally { btn.disabled = false; btn.textContent = '다시 제출'; }
+                });
+            });
+        }
+
+        function updateProgress() {
+            const done = qnaItems.filter(q => q.feedback).length;
+            VIZ.progress('#viz-progress', { done, total: qnaItems.length, label: '면접 답변 완료율' });
+            document.getElementById('summary-section').style.display = 'block';
+        }
+
+        async function loadFor(sjId) {
+            selectedJobId = sjId;
+            const r = await API.get(`/api/jobs/selected/${sjId}`);
+            const j = r.job;
+            document.getElementById('job-summary').innerHTML =
+                `<strong>${escapeHtml(j.title)}</strong> @ ${escapeHtml(j.company)} · 적합도 <strong>${Math.round(r.match.score || 0)}점</strong><br>${escapeHtml(j.summary || '')}`;
+            document.getElementById('to-checklist').href = `/checklist.html?id=${sjId}`;
+            qnaItems = await API.get(`/api/interview/${sjId}/questions`);
+            document.getElementById('qna-section').style.display = 'block';
+            renderQna();
+            updateProgress();
+        }
+
+        document.getElementById('regen-btn').addEventListener('click', async () => {
+            if (!selectedJobId) return;
+            if (!confirm('현재 답변과 피드백이 모두 삭제됩니다. 계속할까요?')) return;
+            qnaItems = await API.post(`/api/interview/${selectedJobId}/questions/regenerate`);
+            renderQna();
+            updateProgress();
+            toast('새 질문 생성 완료');
+        });
+
+        (async () => {
+            const me = await requireLogin();
+            if (!me) return;
+            renderNav('/interview.html', me);
+
+            const list = await API.get('/api/jobs/selected');
+            if (!list.length) {
+                document.getElementById('job-summary').innerHTML = '아직 선택한 공고가 없습니다. <a href="/jobs.html">추천 공고에서 선택하세요 →</a>';
+                return;
+            }
+            if (!selectedJobId) selectedJobId = list[0].id;
+
+            if (list.length > 1) {
+                document.getElementById('picker-section').style.display = 'block';
+                document.getElementById('picker-list').innerHTML = list.map(s => `
+                    <div class="job-card ${String(s.id) === String(selectedJobId) ? 'selected' : ''}" data-id="${s.id}">
+                        <div class="job-header">
+                            <div>
+                                <div class="job-title">${escapeHtml(s.job.title)}</div>
+                                <div class="job-company">${escapeHtml(s.job.company)}</div>
+                            </div>
+                            <div class="score-badge">${Math.round(s.match.score || 0)}점</div>
+                        </div>
+                    </div>
+                `).join('');
+                document.querySelectorAll('#picker-list .job-card').forEach(el => {
+                    el.addEventListener('click', () => loadFor(el.dataset.id));
+                });
+            }
+
+            loadFor(selectedJobId);
+        })();
+    </script>
+</body>
+</html>

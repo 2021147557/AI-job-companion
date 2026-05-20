@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>포트폴리오 입력 - AI 취업 동행</title>
+    <link rel="stylesheet" type="text/css" href="/css/main.css">
+</head>
+<body>
+    <div class="page">
+        <header class="header">
+            <div class="header-spacer"></div>
+            <h1 class="header-text">AI 취업 동행 서비스</h1>
+        </header>
+        <nav class="navigation"></nav>
+
+        <section class="section">
+            <h2 class="section-title">포트폴리오 입력 <span class="pill">시나리오 1단계</span></h2>
+            <p class="muted">아래 정보를 입력하면 워크넷/고용24 공고와 매칭하여 적합한 공고를 추천합니다.</p>
+
+            <form id="portfolio-form">
+                <div class="two-col">
+                    <div class="form-row">
+                        <label class="field-label" for="desiredRole">희망 직무</label>
+                        <input id="desiredRole" class="field-input" placeholder="예: 프론트엔드 개발자">
+                    </div>
+                    <div class="form-row">
+                        <label class="field-label" for="desiredRegion">희망 지역</label>
+                        <input id="desiredRegion" class="field-input" placeholder="예: 서울 강남">
+                    </div>
+                    <div class="form-row">
+                        <label class="field-label" for="careerLevel">경력 수준</label>
+                        <select id="careerLevel" class="field-select">
+                            <option value="신입">신입</option>
+                            <option value="신입~3년">신입~3년차</option>
+                            <option value="경력 1년+">경력 1년 이상</option>
+                            <option value="경력 3년+">경력 3년 이상</option>
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <label class="field-label" for="employmentType">선호 근무 형태</label>
+                        <select id="employmentType" class="field-select">
+                            <option value="정규직">정규직</option>
+                            <option value="계약직">계약직</option>
+                            <option value="인턴">인턴</option>
+                            <option value="무관">무관</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <label class="field-label">기술 스택 <span class="muted">(Enter 또는 쉼표로 추가)</span></label>
+                    <div class="tag-input-wrap" id="skills-wrap">
+                        <input id="skills-input" placeholder="예: JavaScript, React, Python">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <label class="field-label">프로젝트 경험</label>
+                    <div id="projects-list"></div>
+                    <button type="button" class="btn btn-secondary btn-sm" id="add-project">+ 프로젝트 추가</button>
+                </div>
+
+                <div class="form-row">
+                    <label class="field-label" for="selfIntro">자기소개</label>
+                    <textarea id="selfIntro" class="field-textarea" placeholder="강점, 관심 분야, 경험을 자유롭게 작성하세요."></textarea>
+                </div>
+
+                <div id="msg" class="success-msg" style="display:none;"></div>
+
+                <div class="button-row">
+                    <button type="submit" class="btn btn-primary">저장</button>
+                    <button type="button" class="btn btn-secondary" id="save-and-recommend">저장 후 공고 추천 보기</button>
+                </div>
+            </form>
+        </section>
+    </div>
+
+    <script src="/js/common.js"></script>
+    <script>
+        let skills = [];
+        let projects = [];
+
+        function renderSkills() {
+            const wrap = document.getElementById('skills-wrap');
+            const input = document.getElementById('skills-input');
+            [...wrap.querySelectorAll('.tag')].forEach(n => n.remove());
+            skills.forEach((s, i) => {
+                const span = document.createElement('span');
+                span.className = 'tag';
+                span.innerHTML = `${escapeHtml(s)}<button type="button" aria-label="삭제">×</button>`;
+                span.querySelector('button').onclick = () => { skills.splice(i, 1); renderSkills(); };
+                wrap.insertBefore(span, input);
+            });
+        }
+
+        function addSkillsFromInput() {
+            const input = document.getElementById('skills-input');
+            const raw = input.value.trim();
+            if (!raw) return;
+            raw.split(',').map(s => s.trim()).filter(Boolean).forEach(s => {
+                if (!skills.includes(s)) skills.push(s);
+            });
+            input.value = '';
+            renderSkills();
+        }
+
+        document.getElementById('skills-input').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ',') {
+                e.preventDefault();
+                addSkillsFromInput();
+            }
+        });
+        document.getElementById('skills-input').addEventListener('blur', addSkillsFromInput);
+
+        function renderProjects() {
+            const list = document.getElementById('projects-list');
+            list.innerHTML = '';
+            projects.forEach((p, i) => {
+                const card = document.createElement('div');
+                card.className = 'project-card';
+                card.innerHTML = `
+                    <button type="button" class="remove-project" aria-label="삭제">× 삭제</button>
+                    <input class="field-input" placeholder="프로젝트명" value="${escapeHtml(p.name || '')}" data-k="name">
+                    <input class="field-input" placeholder="역할 (예: 프론트엔드, 팀장)" value="${escapeHtml(p.role || '')}" data-k="role">
+                    <input class="field-input" placeholder="사용 기술 (쉼표 구분)" value="${escapeHtml((p.tech || []).join(', '))}" data-k="tech">
+                    <textarea class="field-textarea" placeholder="구현 기능 / 성과" data-k="description">${escapeHtml(p.description || '')}</textarea>
+                `;
+                card.querySelector('.remove-project').onclick = () => { projects.splice(i, 1); renderProjects(); };
+                card.querySelectorAll('[data-k]').forEach(el => {
+                    el.addEventListener('input', () => {
+                        const k = el.dataset.k;
+                        if (k === 'tech') p.tech = el.value.split(',').map(s => s.trim()).filter(Boolean);
+                        else p[k] = el.value;
+                    });
+                });
+                list.appendChild(card);
+            });
+        }
+
+        document.getElementById('add-project').addEventListener('click', () => {
+            projects.push({ name: '', role: '', tech: [], description: '' });
+            renderProjects();
+        });
+
+        async function save() {
+            await API.put('/api/portfolio', {
+                desiredRole: document.getElementById('desiredRole').value.trim(),
+                desiredRegion: document.getElementById('desiredRegion').value.trim(),
+                careerLevel: document.getElementById('careerLevel').value,
+                employmentType: document.getElementById('employmentType').value,
+                skills,
+                projects,
+                selfIntro: document.getElementById('selfIntro').value.trim()
+            });
+        }
+
+        document.getElementById('portfolio-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            addSkillsFromInput();
+            try {
+                await save();
+                const m = document.getElementById('msg');
+                m.textContent = '저장되었습니다.';
+                m.style.display = 'block';
+                toast('포트폴리오 저장 완료');
+            } catch (ex) { alert(ex.message); }
+        });
+
+        document.getElementById('save-and-recommend').addEventListener('click', async () => {
+            addSkillsFromInput();
+            try {
+                await save();
+                location.href = '/jobs.html';
+            } catch (ex) { alert(ex.message); }
+        });
+
+        (async () => {
+            const me = await requireLogin();
+            if (!me) return;
+            renderNav('/portfolio.html', me);
+            const pf = await API.get('/api/portfolio');
+            document.getElementById('desiredRole').value = pf.desiredRole || '';
+            document.getElementById('desiredRegion').value = pf.desiredRegion || '';
+            document.getElementById('careerLevel').value = pf.careerLevel || '신입';
+            document.getElementById('employmentType').value = pf.employmentType || '정규직';
+            document.getElementById('selfIntro').value = pf.selfIntro || '';
+            skills = Array.isArray(pf.skills) ? pf.skills.slice() : [];
+            projects = Array.isArray(pf.projects) ? pf.projects.slice() : [];
+            if (!projects.length) projects.push({ name: '', role: '', tech: [], description: '' });
+            renderSkills();
+            renderProjects();
+        })();
+    </script>
+</body>
+</html>

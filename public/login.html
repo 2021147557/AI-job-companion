@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>로그인 - AI 취업 동행</title>
+    <link rel="stylesheet" type="text/css" href="/css/main.css">
+</head>
+<body>
+    <div class="page">
+        <header class="header">
+            <div class="header-spacer"></div>
+            <h1 class="header-text">AI 취업 동행 서비스</h1>
+        </header>
+        <nav class="navigation"></nav>
+
+        <div class="form-box">
+            <h2 class="section-title">로그인</h2>
+            <form id="login-form">
+                <div class="form-row">
+                    <label for="userid" class="field-label">아이디</label>
+                    <input type="text" id="userid" name="userid" class="field-input" autofocus required
+                           placeholder="아이디" autocomplete="username">
+                </div>
+                <div class="form-row">
+                    <label for="password" class="field-label">비밀번호</label>
+                    <input type="password" id="password" name="password" class="field-input" required
+                           placeholder="비밀번호" autocomplete="current-password">
+                </div>
+                <div id="err" class="error-msg" style="display:none;"></div>
+                <div class="button-row">
+                    <button type="submit" class="btn btn-primary">로그인</button>
+                    <a href="/signup.html" class="btn btn-secondary">회원가입</a>
+                </div>
+            </form>
+        </div>
+    </div>
+    <script src="/js/common.js"></script>
+    <script>
+        renderNav('/login.html', null);
+        document.getElementById('login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const userid = document.getElementById('userid').value.trim();
+            const password = document.getElementById('password').value;
+            const err = document.getElementById('err');
+            err.style.display = 'none';
+            try {
+                await API.post('/api/auth/login', { userid, password });
+                location.href = '/dashboard.html';
+            } catch (ex) {
+                err.textContent = ex.message;
+                err.style.display = 'block';
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>면접 당일 - AI 취업 동행</title>
+    <link rel="stylesheet" type="text/css" href="/css/main.css">
+</head>
+<body>
+    <div class="page">
+        <header class="header">
+            <div class="header-spacer"></div>
+            <h1 class="header-text">AI 취업 동행 서비스</h1>
+        </header>
+        <nav class="navigation"></nav>
+
+        <section class="section">
+            <h2 class="section-title">면접 일정 & 위치</h2>
+            <div id="job-summary" class="muted">로딩 중…</div>
+            <div class="two-col" style="margin-top: 10px;">
+                <div class="form-row">
+                    <label class="field-label" for="interviewAt">면접 일시</label>
+                    <input id="interviewAt" type="datetime-local" class="field-input">
+                </div>
+                <div class="form-row">
+                    <label class="field-label" for="interviewAddress">면접장 주소</label>
+                    <input id="interviewAddress" class="field-input" placeholder="예: 서울 강남구 테헤란로 145">
+                </div>
+            </div>
+            <div class="button-row">
+                <button id="save-meta" class="btn btn-primary btn-sm">일정/주소 저장</button>
+                <button id="use-current" class="btn btn-secondary btn-sm">현재 위치 사용 (모바일)</button>
+                <button id="regen-list" class="btn btn-secondary btn-sm">체크리스트 다시 생성</button>
+            </div>
+            <div id="countdown" class="muted" style="margin-top: 8px;"></div>
+            <div id="from-current" class="muted" style="margin-top: 4px;"></div>
+        </section>
+
+        <section class="section">
+            <h2 class="section-title">체크리스트 <span class="pill">시나리오 3단계</span></h2>
+            <div id="check-list" class="checklist"></div>
+            <div class="progress-bar"><div id="progress-fill" class="progress-fill" style="width: 0%"></div></div>
+            <div class="muted" id="progress-text" style="margin-top: 4px;"></div>
+            <div class="form-row" style="margin-top: 10px;">
+                <div style="display:flex; gap: 6px;">
+                    <input id="new-item" class="field-input" placeholder="체크 항목 추가 (Enter)" style="flex:1;">
+                    <button id="add-item" class="btn btn-secondary btn-sm">추가</button>
+                </div>
+            </div>
+        </section>
+
+        <section class="section">
+            <h2 class="section-title">면접장 주변 지도 <span class="pill">시나리오 4단계 · Kakao Maps</span></h2>
+            <div class="places-tabs" id="place-tabs">
+                <button class="place-tab active" data-type="all">전체</button>
+                <button class="place-tab" data-type="cafe">카페</button>
+                <button class="place-tab" data-type="cvs">편의점</button>
+                <button class="place-tab" data-type="print">프린트 가게</button>
+                <button class="place-tab" data-type="suit">정장 대여소</button>
+                <button class="place-tab" data-type="subway">지하철역</button>
+            </div>
+            <div id="map"></div>
+            <div id="map-fallback" class="muted" style="display:none; margin-top: 6px;"></div>
+            <h3 style="margin: 12px 0 4px;">주변 장소 목록</h3>
+            <div id="places-list" class="places-list"></div>
+        </section>
+    </div>
+
+    <script src="/js/common.js"></script>
+    <script>
+        const selectedJobId = new URLSearchParams(location.search).get('id');
+        let selectedJob = null;
+        let placesData = {};
+        let currentType = 'all';
+        let map = null;
+        let markers = [];
+        let centerMarker = null;
+        let kakaoReady = false;
+
+        const TYPE_COLORS = { cafe: '#b3700f', cvs: '#2da043', print: '#0050d4', suit: '#6b46c1', subway: '#e53935' };
+
+        function flatPlaces(types) {
+            const list = [];
+            Object.keys(placesData).forEach(t => {
+                if (types.includes(t)) list.push(...placesData[t]);
+            });
+            list.sort((a, b) => a.distance - b.distance);
+            return list;
+        }
+
+        function renderPlacesList() {
+            const types = currentType === 'all' ? ['cafe', 'cvs', 'print', 'suit', 'subway'] : [currentType];
+            const places = flatPlaces(types);
+            const root = document.getElementById('places-list');
+            if (!places.length) {
+                root.innerHTML = '<div class="muted">검색된 장소가 없습니다.</div>';
+                return;
+            }
+            root.innerHTML = places.map(p => `
+                <div class="place-row" data-x="${p.x}" data-y="${p.y}">
+                    <div>
+                        <strong>${escapeHtml(p.name)}</strong>
+                        <span class="muted" style="margin-left: 4px;">[${escapeHtml(p.typeLabel)}]</span>
+                        <div class="muted">${escapeHtml(p.address || '')}</div>
+                    </div>
+                    <div class="place-distance">${p.distance}m</div>
+                </div>
+            `).join('');
+            root.querySelectorAll('.place-row').forEach(row => {
+                row.addEventListener('click', () => {
+                    if (!map || !kakaoReady) return;
+                    const lat = Number(row.dataset.y), lng = Number(row.dataset.x);
+                    map.panTo(new kakao.maps.LatLng(lat, lng));
+                });
+            });
+        }
+
+        function renderMarkers() {
+            if (!map || !kakaoReady) return;
+            markers.forEach(m => m.setMap(null));
+            markers = [];
+            const types = currentType === 'all' ? ['cafe', 'cvs', 'print', 'suit', 'subway'] : [currentType];
+            const places = flatPlaces(types);
+            places.forEach(p => {
+                const m = new kakao.maps.Marker({
+                    position: new kakao.maps.LatLng(p.y, p.x),
+                    map,
+                    title: `${p.name} (${p.distance}m)`
+                });
+                const iw = new kakao.maps.InfoWindow({
+                    content: `<div style="padding:4px 8px;font-size:12px;">${escapeHtml(p.name)}<br>${escapeHtml(p.typeLabel)} · ${p.distance}m</div>`
+                });
+                kakao.maps.event.addListener(m, 'click', () => iw.open(map, m));
+                markers.push(m);
+            });
+        }
+
+        async function initKakaoMap(center) {
+            const conf = await API.get('/api/config');
+            if (!conf.kakaoJsKey) {
+                document.getElementById('map').style.display = 'none';
+                document.getElementById('map-fallback').style.display = 'block';
+                document.getElementById('map-fallback').innerHTML =
+                    `Kakao JS 키가 설정되지 않아 지도 렌더링을 생략합니다. (.env 의 KAKAO_JS_KEY 채워주세요.)<br>아래 좌표 기반 거리 정보는 정상 표시됩니다.`;
+                renderPlacesList();
+                return;
+            }
+            await new Promise((resolve, reject) => {
+                const s = document.createElement('script');
+                s.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${conf.kakaoJsKey}&autoload=false`;
+                s.onload = () => kakao.maps.load(resolve);
+                s.onerror = reject;
+                document.head.appendChild(s);
+            });
+            kakaoReady = true;
+            map = new kakao.maps.Map(document.getElementById('map'), {
+                center: new kakao.maps.LatLng(center.y, center.x),
+                level: 4
+            });
+            centerMarker = new kakao.maps.Marker({
+                position: new kakao.maps.LatLng(center.y, center.x),
+                map,
+                title: '면접장'
+            });
+            const iw = new kakao.maps.InfoWindow({
+                content: `<div style="padding:6px 10px;font-size:12px;font-weight:700;">면접장</div>`
+            });
+            iw.open(map, centerMarker);
+            renderMarkers();
+        }
+
+        async function loadPlaces() {
+            const data = await API.get(`/api/places/for-selected/${selectedJobId}`);
+            placesData = data.nearby;
+            await initKakaoMap(data.geo);
+            renderPlacesList();
+            renderMarkers();
+        }
+
+        async function loadChecklist() {
+            const items = await API.get(`/api/checklist/${selectedJobId}`);
+            renderChecklist(items);
+        }
+
+        function renderChecklist(items) {
+            const list = document.getElementById('check-list');
+            list.innerHTML = items.map(it => `
+                <label class="check-item ${it.done ? 'done' : ''}" data-id="${it.id}">
+                    <input type="checkbox" ${it.done ? 'checked' : ''}>
+                    <span class="check-text">${escapeHtml(it.text)}</span>
+                    <button class="check-delete" title="삭제">×</button>
+                </label>
+            `).join('');
+            const done = items.filter(i => i.done).length;
+            document.getElementById('progress-fill').style.width = items.length ? `${(done / items.length) * 100}%` : '0%';
+            document.getElementById('progress-text').textContent = `${done} / ${items.length} 완료`;
+
+            list.querySelectorAll('.check-item').forEach(el => {
+                const id = el.dataset.id;
+                el.querySelector('input').addEventListener('change', async (e) => {
+                    await API.patch(`/api/checklist/item/${id}`, { done: e.target.checked });
+                    loadChecklist();
+                });
+                el.querySelector('.check-delete').addEventListener('click', async (e) => {
+                    e.preventDefault();
+                    await API.del(`/api/checklist/item/${id}`);
+                    loadChecklist();
+                });
+            });
+        }
+
+        document.getElementById('add-item').addEventListener('click', async () => {
+            const input = document.getElementById('new-item');
+            const text = input.value.trim();
+            if (!text) return;
+            await API.post(`/api/checklist/${selectedJobId}/item`, { text });
+            input.value = '';
+            loadChecklist();
+        });
+        document.getElementById('new-item').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); document.getElementById('add-item').click(); }
+        });
+
+        document.getElementById('regen-list').addEventListener('click', async () => {
+            if (!confirm('기존 체크리스트가 삭제됩니다. 계속할까요?')) return;
+            await API.post(`/api/checklist/${selectedJobId}/regenerate`, {});
+            loadChecklist();
+            toast('체크리스트 재생성됨');
+        });
+
+        document.getElementById('save-meta').addEventListener('click', async () => {
+            const interviewAt = document.getElementById('interviewAt').value || null;
+            const interviewAddress = document.getElementById('interviewAddress').value.trim() || null;
+            await API.patch(`/api/jobs/selected/${selectedJobId}`, { interviewAt, interviewAddress });
+            toast('저장 완료');
+            updateCountdown();
+            await loadPlaces();
+        });
+
+        document.getElementById('use-current').addEventListener('click', () => {
+            if (!navigator.geolocation) { toast('이 브라우저는 위치 정보를 지원하지 않습니다'); return; }
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    const lat = pos.coords.latitude.toFixed(5);
+                    const lng = pos.coords.longitude.toFixed(5);
+                    document.getElementById('from-current').textContent =
+                        `현재 위치: ${lat}, ${lng} → 면접장까지의 이동 경로를 위 지도에서 확인하세요.`;
+                    if (map && kakaoReady) {
+                        const userMarker = new kakao.maps.Marker({
+                            position: new kakao.maps.LatLng(pos.coords.latitude, pos.coords.longitude),
+                            map,
+                            title: '현재 위치'
+                        });
+                        markers.push(userMarker);
+                    }
+                    toast('현재 위치 표시됨');
+                },
+                (err) => toast('위치 권한 거부됨: ' + err.message),
+                { enableHighAccuracy: true, timeout: 8000 }
+            );
+        });
+
+        let countdownTimer = null;
+        function updateCountdown() {
+            clearInterval(countdownTimer);
+            const v = document.getElementById('interviewAt').value;
+            if (!v) { document.getElementById('countdown').textContent = ''; return; }
+            const tick = () => {
+                const target = new Date(v).getTime();
+                const diff = target - Date.now();
+                if (diff <= 0) {
+                    document.getElementById('countdown').textContent = '면접 시간입니다! 좋은 결과 있길!';
+                    clearInterval(countdownTimer);
+                    return;
+                }
+                const h = Math.floor(diff / 3600000);
+                const m = Math.floor((diff % 3600000) / 60000);
+                const s = Math.floor((diff % 60000) / 1000);
+                document.getElementById('countdown').textContent = `면접까지 남은 시간: ${h}시간 ${m}분 ${s}초 (30분 전 도착 권장)`;
+            };
+            tick();
+            countdownTimer = setInterval(tick, 1000);
+        }
+        document.getElementById('interviewAt').addEventListener('change', updateCountdown);
+
+        document.querySelectorAll('#place-tabs .place-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('#place-tabs .place-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                currentType = tab.dataset.type;
+                renderPlacesList();
+                renderMarkers();
+            });
+        });
+
+        (async () => {
+            const me = await requireLogin();
+            if (!me) return;
+            renderNav('/checklist.html', me);
+
+            if (!selectedJobId) {
+                const list = await API.get('/api/jobs/selected');
+                if (!list.length) {
+                    document.getElementById('job-summary').innerHTML = '아직 선택한 공고가 없습니다. <a href="/jobs.html">추천 공고에서 선택하세요 →</a>';
+                    return;
+                }
+                location.replace(`/checklist.html?id=${list[0].id}`);
+                return;
+            }
+            const r = await API.get(`/api/jobs/selected/${selectedJobId}`);
+            selectedJob = r;
+            const j = r.job;
+            document.getElementById('job-summary').innerHTML =
+                `<strong>${escapeHtml(j.title)}</strong> @ ${escapeHtml(j.company)} · 면접장 주소: ${escapeHtml(r.interviewAddress || j.address || '-')}`;
+            document.getElementById('interviewAddress').value = r.interviewAddress || j.address || '';
+            if (r.interviewAt) {
+                // datetime-local 형식 변환
+                const d = new Date(r.interviewAt);
+                if (!isNaN(d.getTime())) {
+                    const pad = (n) => String(n).padStart(2, '0');
+                    document.getElementById('interviewAt').value =
+                        `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+                    updateCountdown();
+                }
+            }
+            await Promise.all([loadChecklist(), loadPlaces()]);
+        })();
+    </script>
+</body>
+</html>
