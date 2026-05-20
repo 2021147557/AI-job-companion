@@ -1,5 +1,5 @@
 const express = require('express');
-const { getDb } = require('../db');
+const { get } = require('../db');
 const { requireLogin } = require('../middleware/auth');
 const { geocode, searchNearby } = require('../services/kakao');
 
@@ -25,9 +25,8 @@ router.post('/nearby', requireLogin, async (req, res, next) => {
 
 router.get('/for-selected/:selectedJobId', requireLogin, async (req, res, next) => {
     try {
-        const db = getDb();
-        const r = db.prepare('SELECT * FROM selected_jobs WHERE id = ? AND user_id = ?')
-            .get(req.params.selectedJobId, req.session.userId);
+        const r = await get('SELECT * FROM selected_jobs WHERE id = ? AND user_id = ?',
+            req.params.selectedJobId, req.session.userId);
         if (!r) return res.status(404).json({ error: '선택된 공고가 없습니다.' });
         const job = JSON.parse(r.job_json);
         const address = r.interview_address || job.address;

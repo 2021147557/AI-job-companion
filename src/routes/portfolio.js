@@ -1,5 +1,5 @@
 const express = require('express');
-const { getDb } = require('../db');
+const { get, run } = require('../db');
 const { requireLogin } = require('../middleware/auth');
 
 const router = express.Router();
@@ -18,36 +18,42 @@ function parsePortfolio(row) {
     };
 }
 
-router.get('/', requireLogin, (req, res) => {
-    const db = getDb();
-    const row = db.prepare('SELECT * FROM portfolios WHERE user_id = ?').get(req.session.userId);
-    res.json(parsePortfolio(row) || {
-        desiredRole: '', desiredRegion: '', careerLevel: '', employmentType: '',
-        skills: [], projects: [], selfIntro: ''
-    });
+router.get('/', requireLogin, async (req, res, next) => {
+    try {
+        const row = await get('SELECT * FROM portfolios WHERE user_id = ?', req.session.userId);
+        res.json(parsePortfolio(row) || {
+            desiredRole: '', desiredRegion: '', careerLevel: '', employmentType: '',
+            skills: [], projects: [], selfIntro: ''
+        });
+    } catch (e) { next(e); }
 });
 
-router.put('/', requireLogin, (req, res) => {
-    const { desiredRole, desiredRegion, careerLevel, employmentType, skills, projects, selfIntro } = req.body || {};
-    const db = getDb();
-    const skillsJson = JSON.stringify(Array.isArray(skills) ? skills : []);
-    const projectsJson = JSON.stringify(Array.isArray(projects) ? projects : []);
-    const existing = db.prepare('SELECT id FROM portfolios WHERE user_id = ?').get(req.session.userId);
-    if (existing) {
-        db.prepare(`UPDATE portfolios SET
-            desired_role = ?, desired_region = ?, career_level = ?, employment_type = ?,
-            skills_json = ?, projects_json = ?, self_intro = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE user_id = ?`)
-            .run(desiredRole || '', desiredRegion || '', careerLevel || '', employmentType || '',
-                skillsJson, projectsJson, selfIntro || '', req.session.userId);
-    } else {
-        db.prepare(`INSERT INTO portfolios
-            (user_id, desired_role, desired_region, career_level, employment_type, skills_json, projects_json, self_intro)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
-            .run(req.session.userId, desiredRole || '', desiredRegion || '', careerLevel || '',
-                employmentType || '', skillsJson, projectsJson, selfIntro || '');
-    }
-    res.json({ ok: true });
+router.put('/', requireLogin, async (req, res, next) => {
+    try {
+        const { desiredRole, desiredRegion, careerLevel, employmentType, skills, projects, selfIntro } = req.body || {};
+        const skillsJson = JSON.stringify(Array.isArray(skills) ? skills : []);
+        const projectsJson = JSON.stringify(Array.isArray(projects) ? projects : []);
+        const existing = await get('SELECT id FROM portfolios WHERE user_id = ?', req.session.userId);
+        if (existing) {
+            await run(
+                `UPDATE portfolios SET
+                    desired_role = ?, desired_region = ?, career_level = ?, employment_type = ?,
+                    skills_json = ?, projects_json = ?, self_intro = ?, updated_at = CURRENT_TIMESTAMP
+                 WHERE user_id = ?`,
+                desiredRole || '', desiredRegion || '', careerLevel || '', employmentType || '',
+                skillsJson, projectsJson, selfIntro || '', req.session.userId
+            );
+        } else {
+            await run(
+                `INSERT INTO portfolios
+                    (user_id, desired_role, desired_region, career_level, employment_type, skills_json, projects_json, self_intro)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                req.session.userId, desiredRole || '', desiredRegion || '', careerLevel || '',
+                employmentType || '', skillsJson, projectsJson, selfIntro || ''
+            );
+        }
+        res.json({ ok: true });
+    } catch (e) { next(e); }
 });
 
 module.exports = router;
