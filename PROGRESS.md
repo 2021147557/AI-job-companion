@@ -35,7 +35,7 @@
 
 ## 디자인
 
-[Clay 디자인 시스템](https://getdesign.md/clay/design-md) 적용 — Clay.com 의 cream canvas + saturated 6-color feature card 톤. CSS 변수로 모든 토큰 노출 (`--canvas`, `--brand-pink`, `--ink` 등).
+[MiniMax 디자인 시스템](https://getdesign.md/minimax/design-md) 적용 — 화이트 캔버스 + DM Sans + 풀 라운드 pill 버튼 + 제품 카드용 saturated 컬러(coral / magenta / blue / purple / black-photo). 대시보드 4단계 카드가 MiniMax product-matrix-grid 톤(보라/코랄/검정/화이트)으로 매핑됨. CSS 변수로 모든 토큰 노출 (`--canvas`, `--brand-coral`, `--brand-blue-deep`, `--ink` 등) + Clay 시절 클래스명(`feature-pink`, `feature-peach` 등) legacy alias 유지.
 
 ## 배포 인프라
 
@@ -84,6 +84,7 @@ Turso DB (ai-job-companion-2021147557leejk, Tokyo 리전)
 |---|---|
 | 2026-05-20 | 초기 MVP 구현 (Express + node:sqlite + d3) |
 | 2026-05-20 | Clay 디자인 시스템 적용 |
+| 2026-05-21 | MiniMax 디자인 시스템으로 교체 (DM Sans + 풀 pill 버튼 + product-card 컬러) |
 | 2026-05-20 | GitHub 푸시 (`leejk206` 오발사 → fresh slate로 `2021147557` 재푸시) |
 | 2026-05-20 | Vercel 호환 개조 (libsql, cookie-session, handler export) |
 | 2026-05-20 | Turso DB 생성 + Vercel ENV 등록 + 프로덕션 배포 |
@@ -112,7 +113,7 @@ AI-job-companion/
 │   ├── index.html, login.html, signup.html
 │   ├── dashboard.html, portfolio.html
 │   ├── jobs.html, interview.html, checklist.html
-│   ├── css/main.css          # Clay 디자인 시스템
+│   ├── css/main.css          # MiniMax 디자인 시스템
 │   └── js/common.js, viz.js  # 공통 + d3 시각화
 ├── src/
 │   ├── db.js                 # libSQL 어댑터 (file:// 또는 Turso URL)
