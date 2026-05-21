@@ -1,8 +1,31 @@
 /* =========================================================
-   OpenAI API 어댑터
-   - 실제: OpenAI Chat Completions (gpt-4o-mini)
+   LLM 어댑터 (파일명은 openai.js 유지 — 라우터 호환)
+   - Gemini (GEMINI_API_KEY) 또는 OpenAI (OPENAI_API_KEY) 자동 감지
+     · Gemini 사용 시 OpenAI 호환 엔드포인트(v1beta/openai/chat/completions) 호출
    - 키 없으면 결정적 mock (스킬 매칭 % + 템플릿 기반 응답)
+   - 양쪽 다 있으면 GEMINI 우선
    ========================================================= */
+
+function hasLLMKey() {
+    return !!(process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY);
+}
+
+function llmConfig() {
+    if (process.env.GEMINI_API_KEY) {
+        return {
+            url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
+            apiKey: process.env.GEMINI_API_KEY,
+            model: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+            provider: 'gemini'
+        };
+    }
+    return {
+        url: 'https://api.openai.com/v1/chat/completions',
+        apiKey: process.env.OPENAI_API_KEY,
+        model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+        provider: 'openai'
+    };
+}
 
 const QUESTION_TEMPLATES = [
     { type: '자기소개', q: '본인을 30초 안에 소개하면서 지원 직무인 {role}와(과) 어떻게 연결되는지 설명해주세요.' },
@@ -71,9 +94,9 @@ function buildMissing(missingSkills) {
 }
 
 async function analyzeMatch(portfolio, job) {
-    if (process.env.OPENAI_API_KEY) {
+    if (hasLLMKey()) {
         try { return await callOpenAIMatch(portfolio, job); }
-        catch (e) { console.warn('[openai] match live 실패, mock 사용:', e.message); }
+        catch (e) { console.warn('[llm] match live 실패, mock 사용:', e.message); }
     }
     const b = scoreMatch(portfolio, job);
     return {
@@ -86,9 +109,9 @@ async function analyzeMatch(portfolio, job) {
 }
 
 async function generateInterviewQuestions(portfolio, job, n = 6) {
-    if (process.env.OPENAI_API_KEY) {
+    if (hasLLMKey()) {
         try { return await callOpenAIQuestions(portfolio, job, n); }
-        catch (e) { console.warn('[openai] questions live 실패, mock 사용:', e.message); }
+        catch (e) { console.warn('[llm] questions live 실패, mock 사용:', e.message); }
     }
     const primarySkill = (job.skills && job.skills[0]) || (portfolio.skills && portfolio.skills[0]) || '관련 기술';
     return QUESTION_TEMPLATES.slice(0, n).map((t, i) => ({
@@ -111,9 +134,9 @@ function answerHeuristics(answer) {
 }
 
 async function evaluateAnswer(question, answer, portfolio, job) {
-    if (process.env.OPENAI_API_KEY) {
+    if (hasLLMKey()) {
         try { return await callOpenAIEvaluate(question, answer, portfolio, job); }
-        catch (e) { console.warn('[openai] evaluate live 실패, mock 사용:', e.message); }
+        catch (e) { console.warn('[llm] evaluate live 실패, mock 사용:', e.message); }
     }
     const h = answerHeuristics(answer);
 
@@ -144,9 +167,9 @@ async function evaluateAnswer(question, answer, portfolio, job) {
 }
 
 async function generateChecklist({ job, interviewAt, currentLocation, hasPortfolioPrint } = {}) {
-    if (process.env.OPENAI_API_KEY) {
+    if (hasLLMKey()) {
         try { return await callOpenAIChecklist({ job, interviewAt, currentLocation, hasPortfolioPrint }); }
-        catch (e) { console.warn('[openai] checklist live 실패, mock 사용:', e.message); }
+        catch (e) { console.warn('[llm] checklist live 실패, mock 사용:', e.message); }
     }
     const items = [
         '신분증(주민등록증/운전면허증) 휴대',
@@ -173,26 +196,32 @@ async function generateChecklist({ job, interviewAt, currentLocation, hasPortfol
     return items;
 }
 
-// ----- 실제 OpenAI 호출 (skeleton) -----
+// ----- 실제 LLM 호출 (Gemini OpenAI-compat 또는 OpenAI) -----
 async function callOpenAI(messages, options = {}) {
-    const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    const cfg = llmConfig();
+    const res = await fetch(cfg.url, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
+            Authorization: `Bearer ${cfg.apiKey}`
         },
         body: JSON.stringify({
-            model,
+            model: cfg.model,
             messages,
             temperature: options.temperature ?? 0.7,
             response_format: options.json ? { type: 'json_object' } : undefined
         })
     });
-    if (!res.ok) throw new Error(`OpenAI HTTP ${res.status}`);
+    if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        throw new Error(`${cfg.provider} HTTP ${res.status} ${body.slice(0, 200)}`);
+    }
     const data = await res.json();
     const content = data.choices?.[0]?.message?.content || '';
-    return options.json ? JSON.parse(content) : content;
+    if (!options.json) return content;
+    // 일부 모델이 json_object 모드에서도 ```json ... ``` fence를 두르는 경우 방어
+    const cleaned = content.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '');
+    return JSON.parse(cleaned);
 }
 
 async function callOpenAIMatch(portfolio, job) {
