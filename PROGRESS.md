@@ -54,29 +54,63 @@ Turso DB (ai-job-companion-2021147557leejk, Tokyo 리전)
 - `TURSO_DATABASE_URL` (libsql://...)
 - `TURSO_AUTH_TOKEN`
 - `SESSION_SECRET`
+- `GEMINI_API_KEY`, `GEMINI_MODEL`=`gemini-2.5-flash`
+- `KAKAO_JS_KEY`, `KAKAO_REST_KEY`
 
-## 외부 API 키 상태
+## 외부 API 키 상태 (2026-05-21 갱신)
 
 | API | 현재 | 동작 |
 |---|---|---|
-| OpenAI | ❌ 미등록 | 결정론적 mock (스킬 매칭 % 기반 추천, 템플릿 면접 질문, 휴리스틱 피드백) |
-| Kakao JS Key (지도) | ❌ 미등록 | 지도 자리에 안내 박스 — 좌표/거리 정보는 정상 |
-| Kakao REST Key (장소 검색) | ❌ 미등록 | mock 장소 데이터 (브랜드명+거리 자동 생성) |
-| 워크넷/고용24 | ❌ 미등록 | mock 15개 공고 (직무/지역/기술 다양) |
+| Gemini (LLM 1순위) | ✅ 등록 (로컬+Vercel) | 라이브 호출 (gemini-2.5-flash, OpenAI 호환 엔드포인트) |
+| OpenAI (LLM 폴백) | ❌ 미등록 | Gemini 우선이라 미사용. 키 추가 시 자동 폴백 가능 |
+| Kakao JS Key (지도) | ✅ 등록 + JS SDK 도메인 검증 통과 | 라이브 지도 렌더 (localhost + Vercel 둘 다 200) |
+| Kakao REST Key (장소 검색) | ✅ 등록 + 카카오맵 서비스 활성화 | 라이브 호출 (주소→좌표, 5개 카테고리 검색) |
+| 워크넷/고용24 | ❌ 미등록 | mock 15개 공고 (서비스 자체에 `searchJobsLive` 미구현 — XML 파서 없음) |
 
-> 발표 영상 찍기 전 **Kakao JS Key는 꼭 등록** 권장 — 실제 지도가 마커로 움직여야 모바일 매시업 핵심 어필 가능.
+> 모든 핵심 외부 API가 라이브 동작 상태. 워크넷만 mock — 발표 시 "mock 데이터" 명시하면 무리 없음.
 
 ## 사용자가 직접 결정해야 할 항목
 
 ### 발표 전 필요
-- [ ] **Kakao JS Key 발급 + 등록** (developers.kakao.com, 5분, 무료, 도메인 등록 시 `https://ai-job-companion-two.vercel.app` 추가)
-- [ ] **OpenAI API 키 등록** (시연 시 LLM 호출이 실제 작동하면 가산점) — 선택이지만 권장
 - [ ] **팀원 역할 분담** (보고서 평가 항목)
   - 후보 분담: ① 인증+포트폴리오 ② 공고추천+d3 ③ 모의면접 ④ 체크리스트+카운트다운 ⑤ 지도+장소검색
+- [ ] 아래 [Spec Gap Todo] 우선순위 작업 진행 여부 결정 (음성·교통·학력필드)
 
 ### 발표 후/보고서
 - [ ] 워크넷/고용24 키 (선택, mock으로도 시연 충분)
 - [ ] 발표 영상 (제안서: 3분, 보고서: 6분 이내)
+
+## Spec Gap Todo (2026-05-21 council 회의 결과)
+
+> 제안서(`인터넷_프로그래밍_2팀(5월_16일).pdf`)의 합성 대상 원본 항목 디테일과 현재 impl 비교한 결과 발견된 갭. 발표 평가 관점에서 "제안서에 있는데 왜 없냐" 공격 가능 항목.
+
+### 🔴 P1 — 모의 면접 음성 인터페이스 (spec 명문 위반)
+- spec: 이창현 항목 "LLM에 **음성 인터페이스를 결합**하여 실제 면접관처럼"
+- 현재: `public/interview.html`에서 `<textarea>` 텍스트 입력만. `grep speech|voice|getUserMedia` 결과 0건
+- 작업: Web Speech API (SpeechRecognition + SpeechSynthesis) 추가. 마이크 버튼으로 답변 녹음→텍스트 변환, 질문은 TTS로 읽어주기. 텍스트 입력 fallback 유지.
+- 예상 30분~1시간. quick win 가장 큼
+
+### 🟡 P2 — 면접장 "교통 상황" 표시 (spec 명문 위반)
+- spec: "면접장 위치, **교통 상황**, 주변 편의시설, 정장 대여소, 프린트 가게, 카페"
+- 현재: `checklist.html:247`에서 "지도에서 확인하세요" 텍스트 문구만. 경로/소요시간/혼잡도 API 호출 0건
+- 작업: 면접장 좌표 ↔ 현재 위치 거리 표시 + Kakao 길찾기 외부 링크 (`https://map.kakao.com/?sName=...&eName=...`) + 도보/지하철 추정 분 계산
+- 예상 30분
+
+### 🟢 P3 — 포트폴리오 입력 풍부도 확장
+- spec: "스펙, 경력, 프로젝트, 포트폴리오 정보"
+- 현재: `portfolio.html:21-67`에 7필드만. 학력·자격증·회사이력·근무기간·파일 업로드 없음
+- 작업: 학력(대학/전공/졸업연도) + 자격증(이름/취득연도) 텍스트 필드 추가. DB JSON 컬럼 활용 (스키마 변경 최소화). 파일 업로드는 무리 — 스킵.
+- 예상 20분
+
+### 🔵 P4 — 발표 스크립트에 컨텍스트 한 줄 명시
+- "원본 9개 아이디어 중 3개 합성 → 음성·교통은 v1.x 진행 중"
+- README/PROGRESS에 표기. 해석 분쟁 자체를 표면화시켜 무력화
+- 예상 10분
+
+### 시연 시 즉시 대응할 약점
+- LLM mock 폴백 산수 → Gemini 라이브로 이미 해결 (키 등록 완료)
+- 워크넷 mock → "공공데이터 API 통합 명시" 카운트만 충족하면 OK
+- 음성 미구현 → 작업 안 한다면 "v1 로드맵에 명시" 답변 준비
 
 ## 개발 히스토리
 
@@ -85,6 +119,9 @@ Turso DB (ai-job-companion-2021147557leejk, Tokyo 리전)
 | 2026-05-20 | 초기 MVP 구현 (Express + node:sqlite + d3) |
 | 2026-05-20 | Clay 디자인 시스템 적용 |
 | 2026-05-21 | MiniMax 디자인 시스템으로 교체 (DM Sans + 풀 pill 버튼 + product-card 컬러) |
+| 2026-05-21 | LLM 어댑터에 Gemini 추가 (OpenAI 호환 엔드포인트, Gemini 우선·OpenAI 폴백·mock 폴백 3단) |
+| 2026-05-21 | Gemini/Kakao JS/Kakao REST 키 등록 (로컬 `.env` + Vercel production) + 카카오맵 서비스 활성화 + JS SDK 도메인 등록 |
+| 2026-05-21 | Council 회의 (Steelman/Red Team/Context Keeper/Moderator) — spec gap 4개 도출, [Spec Gap Todo] 섹션 작성 |
 | 2026-05-20 | GitHub 푸시 (`leejk206` 오발사 → fresh slate로 `2021147557` 재푸시) |
 | 2026-05-20 | Vercel 호환 개조 (libsql, cookie-session, handler export) |
 | 2026-05-20 | Turso DB 생성 + Vercel ENV 등록 + 프로덕션 배포 |
