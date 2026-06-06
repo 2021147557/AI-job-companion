@@ -54,7 +54,7 @@
 
     window.renderNav = (active, user) => {
         const links = [
-            ['/dashboard.html', '메인'],
+            ['/dashboard.html', '대시보드'],
             ['/portfolio.html', '포트폴리오'],
             ['/jobs.html', '추천 공고'],
             ['/interview.html', '모의 면접'],

@@ -16,9 +16,9 @@ router.post('/geocode', requireLogin, async (req, res, next) => {
 
 router.post('/nearby', requireLogin, async (req, res, next) => {
     try {
-        const { x, y, types, radius, anchorName } = req.body || {};
+        const { x, y, types, radius, anchorName, interviewAt } = req.body || {};
         if (x == null || y == null) return res.status(400).json({ error: '좌표가 필요합니다.' });
-        const r = await searchNearby({ x: Number(x), y: Number(y), types, radius, anchorName });
+        const r = await searchNearby({ x: Number(x), y: Number(y), types, radius, anchorName, interviewAt });
         res.json(r);
     } catch (e) { next(e); }
 });
@@ -31,7 +31,12 @@ router.get('/for-selected/:selectedJobId', requireLogin, async (req, res, next) 
         const job = JSON.parse(r.job_json);
         const address = r.interview_address || job.address;
         const geo = await geocode(address);
-        const nearby = await searchNearby({ x: geo.x, y: geo.y, anchorName: job.region || '면접장' });
+        const nearby = await searchNearby({
+            x: geo.x,
+            y: geo.y,
+            anchorName: job.region || '면접장',
+            interviewAt: r.interview_at
+        });
         res.json({ address, geo, nearby });
     } catch (e) { next(e); }
 });

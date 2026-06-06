@@ -19,7 +19,8 @@ router.get('/recommend', requireLogin, async (req, res, next) => {
             desiredRole: portfolio.desiredRole,
             desiredRegion: portfolio.desiredRegion,
             skills: portfolio.skills,
-            careerLevel: portfolio.careerLevel
+            careerLevel: portfolio.careerLevel,
+            employmentType: portfolio.employmentType
         });
         const analyzed = await Promise.all(jobs.map(async (job) => {
             const m = await analyzeMatch(portfolio, job);

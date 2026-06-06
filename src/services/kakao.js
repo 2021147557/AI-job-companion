@@ -60,6 +60,43 @@ function distMeters(a, b) {
     return Math.round(2 * R * Math.asin(Math.sqrt(x)));
 }
 
+function minutesUntil(interviewAt) {
+    if (!interviewAt) return null;
+    const dt = new Date(interviewAt);
+    if (isNaN(dt.getTime())) return null;
+    return Math.round((dt.getTime() - Date.now()) / 60000);
+}
+
+function typePriority(type, minutesLeft) {
+    if (minutesLeft == null) {
+        return { weight: 3, reason: '면접장과 가까운 순서로 추천' };
+    }
+    if (minutesLeft <= 30) {
+        const weights = { cvs: 7, cafe: 6, subway: 5, print: 2, suit: 1 };
+        return { weight: weights[type] || 1, reason: '면접 시간이 가까워 빠르게 들를 수 있는 장소 우선' };
+    }
+    if (minutesLeft <= 120) {
+        const weights = { print: 7, cvs: 6, cafe: 5, subway: 4, suit: 3 };
+        return { weight: weights[type] || 1, reason: '출력물/간단한 대기 장소를 우선 확인' };
+    }
+    const weights = { suit: 7, print: 6, cafe: 5, cvs: 4, subway: 3 };
+    return { weight: weights[type] || 1, reason: '시간 여유가 있어 정장 대여와 출력 준비까지 추천' };
+}
+
+function applyRecommendationPriority(grouped, { interviewAt } = {}) {
+    const minutesLeft = minutesUntil(interviewAt);
+    for (const [type, places] of Object.entries(grouped || {})) {
+        const priority = typePriority(type, minutesLeft);
+        places.forEach(place => {
+            place.minutesLeft = minutesLeft;
+            place.recommendationScore = Math.round((priority.weight * 1000 - Number(place.distance || 0)) * 10) / 10;
+            place.recommendationReason = priority.reason;
+        });
+        places.sort((a, b) => (b.recommendationScore - a.recommendationScore) || (a.distance - b.distance));
+    }
+    return grouped;
+}
+
 const PLACE_NAMES = {
     cafe: ['스타벅스', '투썸플레이스', '메가커피', '이디야커피', '폴바셋', '커피빈'],
     cvs: ['CU', 'GS25', '세븐일레븐', '이마트24', 'CU', 'GS25'],
@@ -112,14 +149,14 @@ async function geocodeLive(address) {
     return { x: Number(d.x), y: Number(d.y), address: d.address_name };
 }
 
-async function searchNearby({ x, y, types = ['cafe', 'cvs', 'subway', 'print', 'suit'], radius = 800, anchorName } = {}) {
+async function searchNearby({ x, y, types = ['cafe', 'cvs', 'subway', 'print', 'suit'], radius = 800, anchorName, interviewAt } = {}) {
     if (process.env.KAKAO_REST_KEY) {
-        try { return await searchNearbyLive({ x, y, types, radius }); }
+        try { return applyRecommendationPriority(await searchNearbyLive({ x, y, types, radius }), { interviewAt }); }
         catch (e) { console.warn('[kakao] nearby live 실패, mock 사용:', e.message); }
     }
     const result = {};
     for (const t of types) result[t] = genMockPlaces({ x, y }, t, 6, anchorName);
-    return result;
+    return applyRecommendationPriority(result, { interviewAt });
 }
 
 async function searchNearbyLive({ x, y, types, radius }) {

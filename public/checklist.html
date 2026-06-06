@@ -76,6 +76,7 @@
         let markers = [];
         let centerMarker = null;
         let kakaoReady = false;
+        let currentLocation = null;
 
         const TYPE_COLORS = { cafe: '#b3700f', cvs: '#2da043', print: '#0050d4', suit: '#6b46c1', subway: '#e53935' };
 
@@ -84,7 +85,10 @@
             Object.keys(placesData).forEach(t => {
                 if (types.includes(t)) list.push(...placesData[t]);
             });
-            list.sort((a, b) => a.distance - b.distance);
+            list.sort((a, b) =>
+                ((b.recommendationScore || 0) - (a.recommendationScore || 0)) ||
+                (a.distance - b.distance)
+            );
             return list;
         }
 
@@ -103,7 +107,10 @@
                         <span class="muted" style="margin-left: 4px;">[${escapeHtml(p.typeLabel)}]</span>
                         <div class="muted">${escapeHtml(p.address || '')}</div>
                     </div>
-                    <div class="place-distance">${p.distance}m</div>
+                    <div class="place-distance">
+                        ${p.distance}m
+                        ${p.recommendationReason ? `<div class="muted">${escapeHtml(p.recommendationReason)}</div>` : ''}
+                    </div>
                 </div>
             `).join('');
             root.querySelectorAll('.place-row').forEach(row => {
@@ -223,7 +230,10 @@
 
         document.getElementById('regen-list').addEventListener('click', async () => {
             if (!confirm('기존 체크리스트가 삭제됩니다. 계속할까요?')) return;
-            await API.post(`/api/checklist/${selectedJobId}/regenerate`, {});
+            await API.post(`/api/checklist/${selectedJobId}/regenerate`, {
+                currentLocation,
+                hasPortfolioPrint: false
+            });
             loadChecklist();
             toast('체크리스트 재생성됨');
         });
@@ -243,6 +253,10 @@
                 (pos) => {
                     const lat = pos.coords.latitude.toFixed(5);
                     const lng = pos.coords.longitude.toFixed(5);
+                    currentLocation = {
+                        lat: Number(pos.coords.latitude),
+                        lng: Number(pos.coords.longitude)
+                    };
                     document.getElementById('from-current').textContent =
                         `현재 위치: ${lat}, ${lng} → 면접장까지의 이동 경로를 위 지도에서 확인하세요.`;
                     if (map && kakaoReady) {

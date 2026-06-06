@@ -4,6 +4,16 @@
    - 키가 없으면 결정적 mock 공고 반환
    ========================================================= */
 
+let XMLParser;
+
+function getXmlParser() {
+  if (!XMLParser) {
+    ({ XMLParser } = require('fast-xml-parser'));
+  }
+
+  return XMLParser;
+}
+
 const MOCK_JOBS = [
     {
         key: 'wn-2026-001',
@@ -260,10 +270,42 @@ function roleMatches(jobRole, desiredRole) {
     return j.includes(d) || d.includes(j);
 }
 
-async function searchJobs({ desiredRole, desiredRegion, skills = [], careerLevel } = {}) {
+function textIncludes(source, keyword) {
+  if (!keyword) return true;
+  return String(source || '').toLowerCase().includes(String(keyword).toLowerCase());
+}
+
+function conditionScore(job, { skills = [], careerLevel, employmentType } = {}) {
+  let score = 0;
+  const jobText = [
+    job.title,
+    job.role,
+    job.summary,
+    job.career,
+    job.employmentType,
+    ...(job.skills || [])
+  ].join(' ');
+
+  const matchedSkills = (skills || []).filter(skill => textIncludes(jobText, skill));
+  score += matchedSkills.length * 4;
+
+  if (careerLevel && textIncludes(job.career, careerLevel)) score += 6;
+  if (employmentType && textIncludes(job.employmentType, employmentType)) score += 6;
+
+  return score;
+}
+
+function sortByUserConditions(jobs, options = {}) {
+  return jobs
+    .map((job, index) => ({ job, index, score: conditionScore(job, options) }))
+    .sort((a, b) => (b.score - a.score) || (a.index - b.index))
+    .map(item => item.job);
+}
+
+async function searchJobs({ desiredRole, desiredRegion, skills = [], careerLevel, employmentType } = {}) {
     if (process.env.WORKNET_SERVICE_KEY) {
         try {
-            return await searchJobsLive({ desiredRole, desiredRegion, skills, careerLevel });
+            return await searchJobsLive({ desiredRole, desiredRegion, skills, careerLevel, employmentType });
         } catch (e) {
             console.warn('[worknet] live API 실패, mock 으로 fallback:', e.message);
         }
@@ -274,18 +316,320 @@ async function searchJobs({ desiredRole, desiredRegion, skills = [], careerLevel
     );
     // 최소 5개 보장: 필터로 0개면 전체 반환
     if (filtered.length < 5) filtered = MOCK_JOBS.slice();
-    return filtered;
+    return sortByUserConditions(filtered, { skills, careerLevel, employmentType });
 }
 
-async function searchJobsLive({ desiredRole, desiredRegion }) {
-    // 공공데이터포털 워크넷 채용정보 API는 XML 응답이라 실제 운영 시 별도 파서 필요.
-    // 여기서는 호출만 시도하고, 실패하면 상위에서 mock 으로 fallback 한다.
-    const key = process.env.WORKNET_SERVICE_KEY;
-    const url = `https://apis.data.go.kr/1051000/recruitment/list?serviceKey=${key}&pageNo=1&numOfRows=20&keyword=${encodeURIComponent(desiredRole || '')}`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`worknet HTTP ${res.status}`);
-    // XML 파싱 미구현 → 일단 mock 으로 fallback
-    throw new Error('worknet XML 파서 미구현, mock 사용');
+function asArray(value) {
+  if (!value) return [];
+  return Array.isArray(value) ? value : [value];
+}
+
+function pick(obj, keys, fallback = '') {
+  for (const key of keys) {
+    const value = obj?.[key];
+
+    if (value !== undefined && value !== null && String(value).trim() !== '') {
+      return String(value).trim();
+    }
+  }
+
+  return fallback;
+}
+
+function stripHtml(value = '') {
+  return String(value)
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function formatDate(value = '') {
+  const raw = String(value).replace(/[^\d]/g, '');
+
+  if (raw.length >= 8) {
+    return `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`;
+  }
+
+  return value || '';
+}
+
+function extractSkills(text = '') {
+  const source = String(text).toLowerCase();
+
+  const candidates = [
+    'JavaScript',
+    'TypeScript',
+    'React',
+    'Vue.js',
+    'Node.js',
+    'Express',
+    'Java',
+    'Spring',
+    'Python',
+    'Django',
+    'SQL',
+    'MySQL',
+    'PostgreSQL',
+    'MongoDB',
+    'AWS',
+    'Docker',
+    'Kubernetes',
+    'HTML',
+    'CSS',
+    'Git',
+    'REST API'
+  ];
+
+  return candidates.filter(skill => source.includes(skill.toLowerCase()));
+}
+
+function findItemsDeep(node) {
+  if (!node || typeof node !== 'object') return [];
+
+  if (node.wantedRoot?.wanted) {
+    return asArray(node.wantedRoot.wanted);
+  }
+
+  if (node.wanted) {
+    return asArray(node.wanted);
+  }
+
+  // 공공데이터 API에서 자주 나오는 구조
+  if (node.response?.body?.items?.item) {
+    return asArray(node.response.body.items.item);
+  }
+
+  if (node.items?.item) {
+    return asArray(node.items.item);
+  }
+
+  if (node.body?.items?.item) {
+    return asArray(node.body.items.item);
+  }
+
+  if (node.item) {
+    return asArray(node.item);
+  }
+
+  // 구조가 다를 때를 대비한 재귀 탐색
+  for (const value of Object.values(node)) {
+    const found = findItemsDeep(value);
+    if (found.length) return found;
+  }
+
+  return [];
+}
+
+function worknetCareerCode(careerLevel = '') {
+  const value = String(careerLevel);
+  if (!value) return '';
+  if (value.includes('신입')) return 'N';
+  if (value.includes('경력')) return 'E';
+  return 'Z';
+}
+
+function worknetEmploymentCode(employmentType = '') {
+  const value = String(employmentType);
+  if (!value || value.includes('무관')) return '';
+  if (value.includes('정규')) return '10';
+  if (value.includes('계약')) return '20';
+  return '';
+}
+
+function normalizeJob(item, index = 0) {
+  const title = pick(item, [
+    'title',
+    'recrutPbancTtl',
+    'wantedTitle',
+    'jobTitle',
+    'wantedTitleNm',
+    'recruitTitle',
+    'empWantedTitle'
+  ], '채용 공고');
+
+  const company = pick(item, [
+    'company',
+    'instNm',
+    'corpNm',
+    'companyName',
+    'empBusiNm',
+    'wantedAuthCompany',
+    'recrutInstNm'
+  ], '기업명 미상');
+
+  const role = pick(item, [
+    'role',
+    'ncsCdNmLst',
+    'jobNm',
+    'occupation',
+    'recruitJob',
+    'recrutSeNm',
+    'jobsNm',
+    'wantedJobNm'
+  ], title);
+
+  const region = pick(item, [
+    'region',
+    'workRegion',
+    'workPlcNm',
+    'workArea',
+    'regionNm',
+    'address',
+    'workAddr'
+  ], '');
+
+  const address = pick(item, [
+    'address',
+    'workAddr',
+    'workAddress',
+    'addr',
+    'workPlcNm',
+    'region'
+  ], region);
+
+  const deadline = formatDate(pick(item, [
+    'deadline',
+    'pbancEndYmd',
+    'receiptCloseDt',
+    'closeDt',
+    'regDt',
+    'endDate',
+    'wantedEndt'
+  ], ''));
+
+  const url = pick(item, [
+    'url',
+    'recrutPbancUrl',
+    'detailUrl',
+    'wantedInfoUrl',
+    'homepage',
+    'applyUrl'
+  ], '');
+
+  const summary = stripHtml(pick(item, [
+    'summary',
+    'jobCont',
+    'workCont',
+    'recrutCn',
+    'detail',
+    'description',
+    'etc'
+  ], `${company}의 ${title} 공고입니다.`));
+
+  const skillText = [
+    title,
+    role,
+    summary,
+    pick(item, ['skill', 'skills', 'preferential', 'qualification', 'qfctn'])
+  ].join(' ');
+
+  return {
+    key: pick(item, [
+      'key',
+      'recrutPblntSn',
+      'wantedAuthNo',
+      'id',
+      'seq',
+      'recruitId'
+    ], `live-${Date.now()}-${index}`),
+    title,
+    company,
+    role,
+    skills: extractSkills(skillText),
+    preferred: [],
+    career: pick(item, [
+      'career',
+      'careerNm',
+      'careerCond',
+      'careerRequirement'
+    ], '정보 없음'),
+    education: pick(item, [
+      'education',
+      'eduNm',
+      'educationNm',
+      'acbgCondNm'
+    ], '정보 없음'),
+    employmentType: pick(item, [
+      'employmentType',
+      'hireTypeNm',
+      'empTpNm',
+      'employType',
+      'recrutSeNm'
+    ], '정보 없음'),
+    region,
+    address,
+    deadline,
+    url,
+    summary
+  };
+}
+
+async function searchJobsLive({ desiredRole, desiredRegion, skills = [], careerLevel, employmentType }) {
+  const key = process.env.WORKNET_SERVICE_KEY;
+
+  const params = new URLSearchParams({
+    authKey: key,
+    callTp: 'L',
+    returnType: 'XML',
+    startPage: '1',
+    display: '20'
+  });
+
+  if (desiredRole) params.set('keyword', desiredRole);
+
+  const career = worknetCareerCode(careerLevel);
+  if (career && career !== 'Z') {
+    params.set('career', career);
+    params.set('minCareerM', career === 'N' ? '0' : '1');
+    params.set('maxCareerM', career === 'N' ? '0' : '120');
+  }
+
+  const empTp = worknetEmploymentCode(employmentType);
+  if (empTp) params.set('empTp', empTp);
+
+  const url = `https://www.work24.go.kr/cm/openApi/call/wk/callOpenApiSvcInfo210L01.do?${params.toString()}`;
+
+  const res = await fetch(url);
+  const xml = await res.text();
+
+  if (!res.ok) {
+    throw new Error(`채용정보 API HTTP ${res.status}: ${xml.slice(0, 200)}`);
+  }
+
+  const Parser = getXmlParser();
+  const parser = new Parser({
+    ignoreAttributes: false,
+    attributeNamePrefix: '',
+    trimValues: true
+  });
+
+  const parsed = parser.parse(xml);
+  const items = findItemsDeep(parsed);
+
+  if (!items.length) {
+    throw new Error(`채용정보 API 응답에서 item을 찾지 못했습니다: ${xml.slice(0, 300)}`);
+  }
+
+  let jobs = items.map(normalizeJob);
+
+  if (desiredRegion) {
+    const regionKeyword = desiredRegion.trim();
+    jobs = jobs.filter(job =>
+      job.region.includes(regionKeyword) ||
+      job.address.includes(regionKeyword)
+    );
+  }
+
+  if (!jobs.length) {
+    throw new Error('검색 조건에 맞는 실시간 채용 공고가 없습니다.');
+  }
+
+  return sortByUserConditions(jobs, { skills, careerLevel, employmentType });
 }
 
 module.exports = { searchJobs, MOCK_JOBS };

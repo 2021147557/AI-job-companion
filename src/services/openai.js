@@ -10,21 +10,28 @@ function hasLLMKey() {
     return !!(process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY);
 }
 
-function llmConfig() {
+function llmConfigs() {
+    const configs = [];
+
     if (process.env.GEMINI_API_KEY) {
-        return {
+        configs.push({
             url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
             apiKey: process.env.GEMINI_API_KEY,
             model: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
             provider: 'gemini'
-        };
+        });
     }
-    return {
-        url: 'https://api.openai.com/v1/chat/completions',
-        apiKey: process.env.OPENAI_API_KEY,
-        model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
-        provider: 'openai'
-    };
+
+    if (process.env.OPENAI_API_KEY) {
+        configs.push({
+            url: 'https://api.openai.com/v1/chat/completions',
+            apiKey: process.env.OPENAI_API_KEY,
+            model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+            provider: 'openai'
+        });
+    }
+
+    return configs;
 }
 
 const QUESTION_TEMPLATES = [
@@ -52,7 +59,7 @@ function scoreMatch(portfolio, job) {
     const ps = (portfolio.skills || []).map(normalize);
     const js = (job.skills || []).map(normalize);
     const intersect = ps.filter(s => js.includes(s));
-    const skillScore = js.length ? (intersect.length / js.length) * 60 : 0;
+    const skillScore = js.length ? (intersect.length / js.length) * 50 : 0;
 
     const roleScore = portfolio.desiredRole && job.role &&
         (normalize(job.role).includes(normalize(portfolio.desiredRole)) ||
@@ -60,6 +67,14 @@ function scoreMatch(portfolio, job) {
 
     const regionScore = portfolio.desiredRegion && job.region &&
         normalize(job.region).includes(normalize(portfolio.desiredRegion)) ? 10 : 0;
+
+    const careerScore = portfolio.careerLevel && job.career &&
+        (normalize(job.career).includes(normalize(portfolio.careerLevel)) ||
+            normalize(portfolio.careerLevel).includes(normalize(job.career))) ? 5 : 0;
+
+    const employmentScore = portfolio.employmentType && job.employmentType &&
+        (normalize(job.employmentType).includes(normalize(portfolio.employmentType)) ||
+            normalize(portfolio.employmentType).includes(normalize(job.employmentType))) ? 5 : 0;
 
     // 프로젝트 텍스트에서 공고 스킬이 언급된 비율
     const projectText = (portfolio.projects || [])
@@ -69,7 +84,7 @@ function scoreMatch(portfolio, job) {
     const projHits = js.filter(s => tokens.includes(s));
     const projectScore = js.length ? (projHits.length / js.length) * 10 : 0;
 
-    const total = Math.round((skillScore + roleScore + regionScore + projectScore) * 10) / 10;
+    const total = Math.round((skillScore + roleScore + regionScore + projectScore + careerScore + employmentScore) * 10) / 10;
     return {
         score: Math.min(100, total),
         matchedSkills: uniq(intersect),
@@ -189,39 +204,71 @@ async function generateChecklist({ job, interviewAt, currentLocation, hasPortfol
     }
     if (currentLocation) {
         items.push('현재 위치에서 면접장까지 이동 경로/소요시간 재확인');
+        items.push(`현재 위치 좌표 확인: ${currentLocation.lat ?? currentLocation.y}, ${currentLocation.lng ?? currentLocation.x}`);
     }
     if (!hasPortfolioPrint) {
         items.push('출력본이 없다면 면접장 주변 프린트 가게 위치 확인');
+    }
+    if (interviewAt) {
+        const dt = new Date(interviewAt);
+        if (!isNaN(dt.getTime())) {
+            const minutesLeft = Math.round((dt.getTime() - Date.now()) / 60000);
+            if (minutesLeft <= 30) {
+                items.unshift('면접까지 30분 이내입니다. 면접장 도착, 신분증, 휴대폰 무음 설정을 최우선으로 확인하세요.');
+            } else if (minutesLeft <= 120) {
+                items.unshift('면접까지 2시간 이내입니다. 출력물과 복장을 빠르게 점검하고 가까운 카페/편의점 위주로 이동하세요.');
+            } else {
+                items.unshift('면접까지 여유가 있습니다. 포트폴리오 출력, 정장 대여, 이동 경로 확인을 먼저 처리하세요.');
+            }
+        }
     }
     return items;
 }
 
 // ----- 실제 LLM 호출 (Gemini OpenAI-compat 또는 OpenAI) -----
 async function callOpenAI(messages, options = {}) {
-    const cfg = llmConfig();
-    const res = await fetch(cfg.url, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${cfg.apiKey}`
-        },
-        body: JSON.stringify({
-            model: cfg.model,
-            messages,
-            temperature: options.temperature ?? 0.7,
-            response_format: options.json ? { type: 'json_object' } : undefined
-        })
-    });
-    if (!res.ok) {
-        const body = await res.text().catch(() => '');
-        throw new Error(`${cfg.provider} HTTP ${res.status} ${body.slice(0, 200)}`);
+    const configs = llmConfigs();
+    let lastError = null;
+
+    for (let i = 0; i < configs.length; i++) {
+        const cfg = configs[i];
+
+        try {
+            const res = await fetch(cfg.url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${cfg.apiKey}`
+                },
+                body: JSON.stringify({
+                    model: cfg.model,
+                    messages,
+                    temperature: options.temperature ?? 0.7,
+                    response_format: options.json ? { type: 'json_object' } : undefined
+                })
+            });
+
+            if (!res.ok) {
+                const body = await res.text().catch(() => '');
+                throw new Error(`${cfg.provider} HTTP ${res.status} ${body.slice(0, 200)}`);
+            }
+
+            const data = await res.json();
+            const content = data.choices?.[0]?.message?.content || '';
+            if (!options.json) return content;
+            // 일부 모델이 json_object 모드에서도 ```json ... ``` fence를 두르는 경우 방어
+            const cleaned = content.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '');
+            return JSON.parse(cleaned);
+        } catch (e) {
+            lastError = e;
+            const nextProvider = configs[i + 1]?.provider;
+            if (nextProvider) {
+                console.warn(`[llm] ${cfg.provider} 실패, ${nextProvider} 재시도:`, e.message);
+            }
+        }
     }
-    const data = await res.json();
-    const content = data.choices?.[0]?.message?.content || '';
-    if (!options.json) return content;
-    // 일부 모델이 json_object 모드에서도 ```json ... ``` fence를 두르는 경우 방어
-    const cleaned = content.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '');
-    return JSON.parse(cleaned);
+
+    throw lastError || new Error('LLM API key가 설정되지 않았습니다.');
 }
 
 async function callOpenAIMatch(portfolio, job) {

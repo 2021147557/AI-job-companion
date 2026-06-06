@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>메인 - AI 취업 동행</title>
+    <title>대시보드 - AI 취업 동행</title>
     <link rel="stylesheet" type="text/css" href="/css/main.css">
 </head>
 <body>
@@ -15,7 +15,7 @@
         <nav class="navigation"></nav>
 
         <section class="section">
-            <h2 class="section-title">진행 상태 <span class="pill" id="status-pill">로딩 중…</span></h2>
+            <h2 class="section-title">오늘의 준비 상황 <span class="pill" id="status-pill">로딩 중</span></h2>
             <div id="status-grid" class="two-col"></div>
         </section>
 
@@ -23,29 +23,33 @@
             <h2 class="section-title">선택한 공고</h2>
             <div id="selected-list" class="jobs-list"></div>
             <div id="selected-empty" class="muted" style="display:none;">
-                아직 선택한 공고가 없습니다. <a href="/jobs.html">추천 공고에서 골라보세요 →</a>
+                아직 선택한 공고가 없습니다. <a href="/jobs.html">추천 공고에서 먼저 골라보세요.</a>
             </div>
         </section>
 
         <section class="section">
-            <h2 class="section-title">시나리오 안내</h2>
-            <div class="two-col">
-                <div>
-                    <strong>1. 포트폴리오 → 공고 추천</strong>
-                    <p class="muted">희망 직무, 기술 스택, 프로젝트를 입력하면 워크넷/고용24 공고와 매칭하여 추천합니다.</p>
-                </div>
-                <div>
-                    <strong>2. 모의 면접</strong>
-                    <p class="muted">선택한 공고에 맞춘 6개 면접 질문이 생성되고, 답변에 대한 피드백을 받습니다.</p>
-                </div>
-                <div>
-                    <strong>3. 면접 당일 체크리스트</strong>
-                    <p class="muted">면접 일정을 입력하면 시간/위치를 기반으로 체크리스트가 자동 생성됩니다.</p>
-                </div>
-                <div>
-                    <strong>4. 면접장 주변 지도</strong>
-                    <p class="muted">Kakao Local API 로 면접장 주변 카페, 편의점, 프린트 가게, 정장 대여소, 지하철역을 보여드립니다.</p>
-                </div>
+            <h2 class="section-title">서비스 흐름 <span class="pill">next action</span></h2>
+            <div class="step-grid">
+                <article class="step-card">
+                    <span class="step-index">1</span>
+                    <h3>포트폴리오 정리</h3>
+                    <p>희망 직무와 기술 스택, 프로젝트 경험을 최신 상태로 유지합니다.</p>
+                </article>
+                <article class="step-card">
+                    <span class="step-index">2</span>
+                    <h3>공고 비교</h3>
+                    <p>공고별 적합도와 부족 역량을 보고 지원 우선순위를 정합니다.</p>
+                </article>
+                <article class="step-card">
+                    <span class="step-index">3</span>
+                    <h3>면접 연습</h3>
+                    <p>선택한 공고에 맞는 질문을 풀고 답변 피드백을 저장합니다.</p>
+                </article>
+                <article class="step-card">
+                    <span class="step-index">4</span>
+                    <h3>당일 체크</h3>
+                    <p>면접 시간, 위치, 주변 장소와 체크리스트를 마지막으로 확인합니다.</p>
+                </article>
             </div>
         </section>
     </div>
@@ -65,20 +69,21 @@
             const pill = document.getElementById('status-pill');
 
             const hasPortfolio = !!(pf.desiredRole || (pf.skills && pf.skills.length));
+            const hasInterview = selected.some(s => s.interviewAt);
             const cards = [
                 {
                     color: 'lavender',
                     title: '1. 포트폴리오',
                     done: hasPortfolio,
-                    desc: hasPortfolio ? `희망 직무: ${escapeHtml(pf.desiredRole || '-')} · 기술 ${pf.skills.length}개` : '아직 입력 전',
+                    desc: hasPortfolio ? `희망 직무: ${pf.desiredRole || '-'} · 기술 ${pf.skills.length}개` : '아직 입력 전입니다.',
                     href: '/portfolio.html',
-                    cta: hasPortfolio ? '수정하기' : '입력하러 가기'
+                    cta: hasPortfolio ? '수정하기' : '입력하기'
                 },
                 {
                     color: 'peach',
                     title: '2. 추천 공고',
                     done: selected.length > 0,
-                    desc: selected.length > 0 ? `${selected.length}개 공고 선택됨` : '추천 공고에서 선택해보세요',
+                    desc: selected.length > 0 ? `${selected.length}개 공고를 선택했습니다.` : '추천 공고에서 지원 후보를 선택하세요.',
                     href: '/jobs.html',
                     cta: '추천 보기'
                 },
@@ -86,15 +91,15 @@
                     color: 'teal',
                     title: '3. 모의 면접',
                     done: false,
-                    desc: selected.length > 0 ? '선택한 공고로 시작 가능' : '먼저 공고를 선택하세요',
+                    desc: selected.length > 0 ? '선택한 공고로 질문과 피드백을 받을 수 있습니다.' : '먼저 공고를 선택하세요.',
                     href: selected.length > 0 ? `/interview.html?id=${selected[0].id}` : '/jobs.html',
                     cta: '면접 연습'
                 },
                 {
                     color: 'cream',
                     title: '4. 면접 당일',
-                    done: false,
-                    desc: selected.length > 0 ? '체크리스트 + 지도' : '먼저 공고를 선택하세요',
+                    done: hasInterview,
+                    desc: selected.length > 0 ? '면접 일정과 주변 장소를 확인하세요.' : '공고 선택 후 사용할 수 있습니다.',
                     href: selected.length > 0 ? `/checklist.html?id=${selected[0].id}` : '/jobs.html',
                     cta: '준비하기'
                 }
@@ -103,9 +108,9 @@
             grid.innerHTML = cards.map(c => `
                 <div class="feature-card feature-${c.color}">
                     <span class="feature-status">${c.done ? '완료' : '대기'}</span>
-                    <div class="feature-title">${c.title}</div>
+                    <div class="feature-title">${escapeHtml(c.title)}</div>
                     <p class="muted" style="margin: 0;">${escapeHtml(c.desc)}</p>
-                    <a class="feature-cta" href="${c.href}">${c.cta} →</a>
+                    <a class="feature-cta" href="${c.href}">${escapeHtml(c.cta)}</a>
                 </div>
             `).join('');
 
@@ -128,7 +133,7 @@
                                 <div class="job-title">${escapeHtml(j.title)}</div>
                                 <div class="job-company">${escapeHtml(j.company)} · ${escapeHtml(j.region || '')}</div>
                             </div>
-                            <div class="score-badge ${cls}">${score}점</div>
+                            <div class="score-badge ${cls}">${score}%</div>
                         </div>
                         <div class="muted">면접 일정: ${formatDateTime(s.interviewAt)} / 마감: ${escapeHtml(j.deadline || '-')}</div>
                         <div class="button-row" style="margin-top: 4px;">

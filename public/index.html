@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI 취업 동행 - 쉬었음 청년을 위한 서비스</title>
+    <title>AI 취업 동행 - 청년 구직자를 위한 면접 준비 서비스</title>
     <link rel="stylesheet" type="text/css" href="/css/main.css">
 </head>
 <body>
@@ -14,41 +14,106 @@
         </header>
         <nav class="navigation"></nav>
 
-        <section class="section">
-            <h2 class="section-title">서비스 소개 <span class="pill">2026 IP 팀 프로젝트</span></h2>
-            <p style="line-height: 1.7;">
-                쉬었음 청년의 취업 준비 과정에서 발생하는 정보 탐색, 면접 준비, 면접 당일 실행의 막막함을 해결하는
-                <strong>LLM · 지도 API 기반 모바일 매시업 서비스</strong>입니다.
-            </p>
-            <div class="two-col">
-                <div>
-                    <h3 style="margin: 12px 0 4px;">서비스 흐름</h3>
-                    <ol style="line-height: 1.8; padding-left: 18px;">
-                        <li>포트폴리오 입력</li>
-                        <li>워크넷/고용24 + OpenAI 기반 채용 공고 추천</li>
-                        <li>선택한 공고로 맞춤 모의 면접</li>
-                        <li>면접 당일 체크리스트 + 면접장 주변 지도</li>
-                    </ol>
-                </div>
-                <div>
-                    <h3 style="margin: 12px 0 4px;">사용 기술</h3>
-                    <ul style="line-height: 1.8; padding-left: 18px;">
-                        <li>Web API (런타임 호출): 워크넷/고용24, Kakao Local, Kakao Maps, OpenAI</li>
-                        <li>그래프 라이브러리: <strong>d3.js</strong></li>
-                        <li>모바일 정보: Geolocation API (현재 위치)</li>
-                        <li>서버: Node.js + Express + SQLite</li>
-                    </ul>
+        <section class="section service-hero">
+            <div class="hero-copy">
+                <span class="hero-kicker">Work24 · LLM · Kakao Maps 기반 취업 준비</span>
+                <h2 class="hero-title">채용 공고 탐색부터 면접 당일까지 한 흐름으로 준비하세요</h2>
+                <p class="hero-subtitle">
+                    포트폴리오와 희망 조건을 분석해 적합한 공고를 추천하고, 공고별 면접 질문과 답변 피드백,
+                    면접장 주변 장소와 체크리스트까지 연결합니다.
+                </p>
+                <div class="hero-actions">
+                    <a class="btn btn-primary" href="/signup.html">무료로 시작하기</a>
+                    <a class="btn btn-secondary" href="/login.html">로그인</a>
                 </div>
             </div>
-            <div class="button-row">
-                <a class="btn btn-primary" href="/signup.html">회원가입하고 시작하기</a>
-                <a class="btn btn-secondary" href="/login.html">로그인</a>
+            <div class="hero-panel" aria-label="서비스 기능 미리보기">
+                <div class="hero-panel-row">
+                    <span class="hero-panel-icon">1</span>
+                    <div>
+                        <div class="hero-panel-label">포트폴리오 분석</div>
+                        <div class="hero-panel-meta">기술 스택 · 프로젝트 · 희망 조건 정리</div>
+                    </div>
+                    <span class="hero-panel-score">완료</span>
+                </div>
+                <div class="hero-panel-row">
+                    <span class="hero-panel-icon">2</span>
+                    <div>
+                        <div class="hero-panel-label">공고 적합도 추천</div>
+                        <div class="hero-panel-meta">요구 기술과 경험 연결성 분석</div>
+                    </div>
+                    <span class="hero-panel-score">87%</span>
+                </div>
+                <div class="hero-panel-row">
+                    <span class="hero-panel-icon">3</span>
+                    <div>
+                        <div class="hero-panel-label">모의 면접 피드백</div>
+                        <div class="hero-panel-meta">구체성 · 논리성 · 직무 연관성 평가</div>
+                    </div>
+                    <span class="hero-panel-score">6문항</span>
+                </div>
+                <div class="hero-panel-row">
+                    <span class="hero-panel-icon">4</span>
+                    <div>
+                        <div class="hero-panel-label">면접 당일 지원</div>
+                        <div class="hero-panel-meta">체크리스트 · 주변 카페 · 프린트 가게</div>
+                    </div>
+                    <span class="hero-panel-score">지도</span>
+                </div>
             </div>
         </section>
 
         <section class="section">
-            <h2 class="section-title">팀원</h2>
-            <p>
+            <h2 class="section-title">서비스 구성 <span class="pill">4-step workflow</span></h2>
+            <div class="step-grid">
+                <article class="step-card">
+                    <span class="step-index">1</span>
+                    <h3>포트폴리오 입력</h3>
+                    <p>희망 직무, 지역, 경력 수준, 기술 스택과 프로젝트 경험을 구조화합니다.</p>
+                </article>
+                <article class="step-card">
+                    <span class="step-index">2</span>
+                    <h3>채용 공고 추천</h3>
+                    <p>워크넷/고용24 공고와 사용자의 경험을 비교해 적합도와 부족 역량을 보여줍니다.</p>
+                </article>
+                <article class="step-card">
+                    <span class="step-index">3</span>
+                    <h3>공고 기반 면접</h3>
+                    <p>선택한 공고에 맞춘 예상 질문을 만들고 답변 품질을 AI가 피드백합니다.</p>
+                </article>
+                <article class="step-card">
+                    <span class="step-index">4</span>
+                    <h3>면접 당일 준비</h3>
+                    <p>면접 시간과 위치를 기준으로 체크리스트와 주변 편의시설을 정리합니다.</p>
+                </article>
+            </div>
+        </section>
+
+        <section class="section">
+            <h2 class="section-title">기술 구성 <span class="pill">Mashup Service</span></h2>
+            <div class="stats-strip">
+                <div class="stat-card">
+                    <span class="stat-value">Work24</span>
+                    <div class="stat-label">워크넷/고용24 채용정보 API</div>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-value">LLM</span>
+                    <div class="stat-label">Gemini 우선, OpenAI 자동 fallback</div>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-value">Kakao</span>
+                    <div class="stat-label">지도, 주소 좌표 변환, 주변 장소 검색</div>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-value">d3.js</span>
+                    <div class="stat-label">공고-역량 그래프와 준비 진행률 시각화</div>
+                </div>
+            </div>
+        </section>
+
+        <section class="section">
+            <h2 class="section-title">팀</h2>
+            <p class="muted">
                 이승호(2020147516) · 김성민(2023240233) · 이재근(2021147557) · 이창현(2023149044) · 하장보(2015101013)
             </p>
         </section>
